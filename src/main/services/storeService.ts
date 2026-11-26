@@ -26,9 +26,9 @@ export class StoreService {
 
   constructor() {
     const userData = app.getPath('userData')
-    this.storePath = path.join(userData, 'cratesync-store.json')
+    this.storePath = path.join(userData, 'dap-music-sync-store.json')
 
-    const defaultLibraryRoot = path.join(app.getPath('music'), 'CrateSync Library')
+    const defaultLibraryRoot = path.join(app.getPath('music'), 'DAP Music Sync Library')
     const defaultSettings: AppSettings = {
       libraryRootPath: defaultLibraryRoot,
       defaultFormat: 'flac',

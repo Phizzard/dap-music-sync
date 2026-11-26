@@ -78,7 +78,7 @@ export const App: React.FC = () => {
               <Disc3 size={22} />
             </div>
             <div>
-              <div className="brand-name">CrateSync</div>
+              <div className="brand-name">DAP Music Sync</div>
               <div className="brand-tag">YT Music · Library · DAP</div>
             </div>
           </div>
@@ -119,7 +119,7 @@ export const App: React.FC = () => {
                 <div>
                   <strong>App Update:</strong>{' '}
                   {appUpdateStatus.message ||
-                    `CrateSync v${appUpdateStatus.latestVersion} is available!`}
+                    `DAP Music Sync v${appUpdateStatus.latestVersion} is available!`}
                 </div>
                 <div className="header-actions">
                   {appUpdateStatus.stage === 'available' && (

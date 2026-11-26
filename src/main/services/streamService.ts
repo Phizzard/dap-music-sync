@@ -42,7 +42,7 @@ export class StreamService {
     private binaryManager: BinaryManager,
     private libraryService: LibraryService
   ) {
-    this.previewDir = path.join(app.getPath('temp'), 'cratesync-previews')
+    this.previewDir = path.join(app.getPath('temp'), 'dap-music-sync-previews')
   }
 
   public async start(): Promise<string> {

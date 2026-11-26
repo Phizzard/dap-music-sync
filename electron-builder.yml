@@ -1,9 +1,9 @@
-appId: com.cratesync.desktop
-productName: CrateSync
+appId: com.phizzard.dapmusicsync
+productName: DAP Music Sync
 publish:
   provider: github
   owner: Phizzard
-  repo: cratesync
+  repo: dap-music-sync
   releaseType: release
 directories:
   buildResources: build

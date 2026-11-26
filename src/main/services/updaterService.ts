@@ -8,7 +8,7 @@ import type { AppUpdateStatus } from '@shared/types'
 const { autoUpdater } = electronUpdater
 
 export const GITHUB_OWNER = 'Phizzard'
-export const GITHUB_REPO = 'cratesync'
+export const GITHUB_REPO = 'dap-music-sync'
 
 function compareSemver(a: string, b: string): number {
   const clean = (v: string): number[] =>
@@ -220,7 +220,9 @@ export class UpdaterService {
       return this.getStatus()
     }
 
-    const fileName = path.basename(new URL(assetUrl).pathname) || `CrateSync-${this.status.latestVersion}.dmg`
+    const fileName =
+      path.basename(new URL(assetUrl).pathname) ||
+      `DAP-Music-Sync-${this.status.latestVersion}.dmg`
     const destPath = path.join(app.getPath('downloads'), fileName)
 
     this.emit({ stage: 'downloading', downloadPercent: 1, message: `Downloading ${fileName}...` })
@@ -261,7 +263,7 @@ export class UpdaterService {
           url,
           {
             headers: {
-              'User-Agent': `CrateSync/${app.getVersion()}`,
+              'User-Agent': `DAPMusicSync/${app.getVersion()}`,
               Accept: 'application/vnd.github+json'
             }
           },
@@ -308,7 +310,7 @@ export class UpdaterService {
         https
           .get(
             targetUrl,
-            { headers: { 'User-Agent': `CrateSync/${app.getVersion()}` } },
+            { headers: { 'User-Agent': `DAPMusicSync/${app.getVersion()}` } },
             (res) => {
               if (
                 res.statusCode &&

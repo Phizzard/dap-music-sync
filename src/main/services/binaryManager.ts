@@ -338,7 +338,7 @@ export class BinaryManager {
         https
           .get(
             targetUrl,
-            { headers: { 'User-Agent': 'CrateSync-Desktop/1.0' } },
+            { headers: { 'User-Agent': 'DAPMusicSync-Desktop/1.0' } },
             (res) => {
               if (
                 res.statusCode &&

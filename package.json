@@ -1,7 +1,8 @@
 {
-  "name": "ytm-downloader",
+  "name": "dap-music-sync",
+  "productName": "DAP Music Sync",
   "version": "1.0.0",
-  "description": "Cross-platform YouTube Music Downloader, Local Music Library & DAP Sync Desktop App",
+  "description": "DAP Music Sync — YouTube Music Downloader, Local Music Library & DAP Sync Desktop App",
   "main": "./out/main/index.js",
   "author": "Antigravity",
   "license": "MIT",

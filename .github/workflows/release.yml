@@ -56,7 +56,7 @@ jobs:
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: cratesync-${{ matrix.os }}
+          name: dap-music-sync-${{ matrix.os }}
           path: |
             dist/*.exe
             dist/*.dmg

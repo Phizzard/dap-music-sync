@@ -278,7 +278,7 @@ export const SettingsView: React.FC = () => {
             <h3>Application Updates</h3>
             <p className="subtext" style={{ marginTop: 4 }}>
               Installed Version: <strong>v{appUpdateStatus?.currentVersion || '1.0.0'}</strong> ·
-              Source: <code>github.com/Phizzard/cratesync</code>
+              Source: <code>github.com/Phizzard/dap-music-sync</code>
             </p>
           </div>
 
@@ -309,7 +309,7 @@ export const SettingsView: React.FC = () => {
                 onClick={async () => {
                   const res = await window.api.checkForAppUpdates()
                   if (res.stage === 'not-available') {
-                    pushToast(res.message || 'CrateSync is up to date!', 'info')
+                    pushToast(res.message || 'DAP Music Sync is up to date!', 'info')
                   } else if (res.stage === 'error') {
                     pushToast(res.error || 'Update check failed', 'error')
                   }
