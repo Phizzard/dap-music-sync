@@ -1,11 +1,15 @@
-import { spawn } from 'child_process'
+import { app } from 'electron'
+import { execFile, spawn } from 'child_process'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import http from 'http'
 import { AddressInfo } from 'net'
 import path from 'path'
+import { promisify } from 'util'
 import type { BinaryManager } from './binaryManager'
 import type { LibraryService } from './libraryService'
+
+const execFileAsync = promisify(execFile)
 
 type ResolvedPreviewStream =
   | {
@@ -30,41 +34,49 @@ const MIME_BY_EXT: Record<string, string> = {
   '.webm': 'audio/webm'
 }
 
-function sniffAudioMimeType(chunk: Buffer): string {
+const PREVIEW_AUDIO_EXTS = ['.webm', '.m4a', '.opus', '.mp3', '.ogg', '.aac']
+
+function sniffAudioFormat(chunk: Buffer): { mimeType: string; ext: string } {
   if (chunk.length >= 4) {
     // EBML / WebM
     if (chunk[0] === 0x1a && chunk[1] === 0x45 && chunk[2] === 0xdf && chunk[3] === 0xa3) {
-      return 'audio/webm'
+      return { mimeType: 'audio/webm', ext: '.webm' }
     }
     // Ogg / Opus
     if (chunk.subarray(0, 4).toString('ascii') === 'OggS') {
-      return 'audio/ogg'
+      return { mimeType: 'audio/ogg', ext: '.ogg' }
     }
     // MP3 ID3 or frame sync
     if (
       chunk.subarray(0, 3).toString('ascii') === 'ID3' ||
       (chunk[0] === 0xff && (chunk[1] & 0xe0) === 0xe0)
     ) {
-      return 'audio/mpeg'
+      return { mimeType: 'audio/mpeg', ext: '.mp3' }
     }
   }
   if (chunk.length >= 8 && chunk.subarray(4, 8).toString('ascii') === 'ftyp') {
-    return 'audio/mp4'
+    return { mimeType: 'audio/mp4', ext: '.m4a' }
   }
-  return 'audio/webm'
+  return { mimeType: 'audio/webm', ext: '.webm' }
 }
 
 export class StreamService {
+  private previewDir: string
+  private inflightPrefetches = new Map<string, Promise<void>>()
   private server: http.Server | null = null
   private baseUrl = ''
 
   constructor(
     private binaryManager: BinaryManager,
     private libraryService: LibraryService
-  ) {}
+  ) {
+    this.previewDir = path.join(app.getPath('temp'), 'dap-music-sync-previews')
+  }
 
   public async start(): Promise<string> {
     if (this.server && this.baseUrl) return this.baseUrl
+
+    await fsp.mkdir(this.previewDir, { recursive: true })
 
     this.server = http.createServer((req, res) => {
       this.routeHttpRequest(req, res).catch((err) => {
@@ -145,6 +157,16 @@ export class StreamService {
     res.end('Not found')
   }
 
+  private findExistingPreviewFile(cleanId: string): string | null {
+    for (const ext of PREVIEW_AUDIO_EXTS) {
+      const candidate = path.join(this.previewDir, `${cleanId}${ext}`)
+      if (fs.existsSync(candidate) && fs.statSync(candidate).size > 1024) {
+        return candidate
+      }
+    }
+    return null
+  }
+
   public async resolveRemoteStream(videoId: string): Promise<ResolvedPreviewStream> {
     const cleanId = videoId.replace(/[^A-Za-z0-9_-]/g, '')
     if (!cleanId) throw new Error('Invalid videoId')
@@ -159,9 +181,86 @@ export class StreamService {
       }
     }
 
+    // If previously cached or prefetched to temp disk, serve with full Range seeking
+    const cachedFile = this.findExistingPreviewFile(cleanId)
+    if (cachedFile) {
+      return {
+        kind: 'file',
+        filePath: cachedFile
+      }
+    }
+
     return {
       kind: 'stream',
       videoId: cleanId
+    }
+  }
+
+  public async prefetchRemoteStream(videoId: string): Promise<void> {
+    const cleanId = videoId.replace(/[^A-Za-z0-9_-]/g, '')
+    if (!cleanId) return
+
+    const owned = this.libraryService.findByVideoId(cleanId)
+    if (owned && fs.existsSync(owned.filePath)) return
+    if (this.findExistingPreviewFile(cleanId)) return
+
+    const existing = this.inflightPrefetches.get(cleanId)
+    if (existing) return existing
+
+    const promise = (async (): Promise<void> => {
+      try {
+        await fsp.mkdir(this.previewDir, { recursive: true })
+        const { ytdlpPath, jsRuntimeArgs } = await this.binaryManager.getPaths()
+        const targetUrl = `https://www.youtube.com/watch?v=${cleanId}`
+        const outTemplate = path.join(this.previewDir, `${cleanId}.%(ext)s`)
+        const t0 = Date.now()
+
+        await execFileAsync(
+          ytdlpPath,
+          [
+            '--no-playlist',
+            ...jsRuntimeArgs,
+            '--extractor-args',
+            'youtube:player_client=android_vr,web',
+            '-f',
+            'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
+            '--no-part',
+            '--no-warnings',
+            '-o',
+            outTemplate,
+            targetUrl
+          ],
+          { timeout: 45000, maxBuffer: 10 * 1024 * 1024, windowsHide: true }
+        )
+        console.log(`[stream] prefetched ${cleanId} in ${Date.now() - t0}ms`)
+        this.pruneOldPreviews().catch(() => {})
+      } catch {
+        // Prefetch is best-effort; ignore failures silently
+      }
+    })()
+
+    this.inflightPrefetches.set(cleanId, promise)
+    try {
+      await promise
+    } finally {
+      this.inflightPrefetches.delete(cleanId)
+    }
+  }
+
+  private async pruneOldPreviews(): Promise<void> {
+    const entries = await fsp.readdir(this.previewDir)
+    const completed = entries.filter((name) => !name.includes('.part.'))
+    if (completed.length <= 30) return
+    const stats = await Promise.all(
+      completed.map(async (name) => {
+        const full = path.join(this.previewDir, name)
+        const s = await fsp.stat(full)
+        return { full, mtime: s.mtimeMs }
+      })
+    )
+    stats.sort((a, b) => b.mtime - a.mtime)
+    for (const old of stats.slice(30)) {
+      await fsp.unlink(old.full).catch(() => {})
     }
   }
 
@@ -180,10 +279,14 @@ export class StreamService {
       return
     }
 
+    await fsp.mkdir(this.previewDir, { recursive: true })
     const t0 = Date.now()
     const { ytdlpPath, jsRuntimeArgs, cookieArgs } = await this.binaryManager.getPaths()
     const activeCookieArgs = useCookies ? cookieArgs : []
-    const targetUrl = `https://music.youtube.com/watch?v=${cleanId}`
+    const extractorArgs = useCookies
+      ? []
+      : ['--extractor-args', 'youtube:player_client=android_vr,web']
+    const targetUrl = `https://www.youtube.com/watch?v=${cleanId}`
 
     const result = await new Promise<'ok' | 'age_restricted'>((resolve, reject) => {
       const proc = spawn(
@@ -192,6 +295,7 @@ export class StreamService {
           '--no-playlist',
           ...jsRuntimeArgs,
           ...activeCookieArgs,
+          ...extractorArgs,
           '-f',
           'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
           '--no-warnings',
@@ -204,6 +308,21 @@ export class StreamService {
 
       let headersSent = false
       let stderrText = ''
+      let partPath: string | null = null
+      let finalPath: string | null = null
+      let fileStream: fs.WriteStream | null = null
+      let streamCompleted = false
+
+      const cleanupPart = (): void => {
+        if (fileStream) {
+          fileStream.destroy()
+          fileStream = null
+        }
+        if (partPath) {
+          fsp.unlink(partPath).catch(() => {})
+          partPath = null
+        }
+      }
 
       proc.stderr.on('data', (chunk: Buffer) => {
         stderrText += chunk.toString()
@@ -216,26 +335,43 @@ export class StreamService {
           return
         }
         headersSent = true
-        const mimeType = sniffAudioMimeType(firstChunk)
+        const { mimeType, ext } = sniffAudioFormat(firstChunk)
         console.log(
           `[stream] ${cleanId} yt-dlp${useCookies ? ' (cookies)' : ''} first audio chunk (${mimeType}) in ${Date.now() - t0}ms`
         )
+
+        partPath = path.join(this.previewDir, `${cleanId}.part.${Date.now()}${ext}`)
+        finalPath = path.join(this.previewDir, `${cleanId}${ext}`)
+        fileStream = fs.createWriteStream(partPath)
+        fileStream.on('error', () => {
+          cleanupPart()
+        })
+        fileStream.write(firstChunk)
+
         res.writeHead(200, {
           'Access-Control-Allow-Origin': '*',
           'Content-Type': mimeType
         })
         res.write(firstChunk)
-        proc.stdout.pipe(res)
+        proc.stdout.on('data', (chunk: Buffer) => {
+          if (fileStream && !fileStream.destroyed) {
+            fileStream.write(chunk)
+          }
+          if (!res.destroyed && !res.writableEnded) {
+            res.write(chunk)
+          }
+        })
       })
 
       proc.stdout.on('end', () => {
+        streamCompleted = true
         if (!res.writableEnded) {
           res.end()
         }
-        resolve('ok')
       })
 
       proc.on('error', (err) => {
+        cleanupPart()
         if (!headersSent && !res.headersSent) reject(err)
         else {
           res.destroy(err)
@@ -244,6 +380,24 @@ export class StreamService {
       })
 
       proc.on('close', (code) => {
+        if (code === 0 && streamCompleted && fileStream && partPath && finalPath) {
+          const completedPart = partPath
+          const completedFinal = finalPath
+          const ws = fileStream
+          fileStream = null
+          partPath = null
+          ws.end(() => {
+            fsp
+              .rename(completedPart, completedFinal)
+              .then(() => this.pruneOldPreviews())
+              .catch(() => {
+                fsp.unlink(completedPart).catch(() => {})
+              })
+          })
+        } else {
+          cleanupPart()
+        }
+
         if (!headersSent && !res.headersSent) {
           const msg = stderrText.trim() || `yt-dlp stream exited with code ${code}`
           if (/sign in to confirm your age/i.test(msg)) {
@@ -267,6 +421,7 @@ export class StreamService {
       res.on('close', () => {
         if (!res.writableEnded && !proc.killed) {
           proc.kill()
+          cleanupPart()
         }
       })
     })

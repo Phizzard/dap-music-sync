@@ -51,6 +51,7 @@ const api: ElectronApi = {
   resolveCollection: (collection: RemoteCollection) =>
     ipcRenderer.invoke('music:resolveCollection', collection),
   warmPreviewStream: (videoId: string) => ipcRenderer.invoke('stream:warm', videoId),
+  prefetchPreviewStream: (videoId: string) => ipcRenderer.invoke('stream:prefetch', videoId),
 
   // Downloads
   getDownloadQueue: () => ipcRenderer.invoke('downloads:getQueue'),

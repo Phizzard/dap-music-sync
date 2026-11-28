@@ -291,6 +291,7 @@ export interface ElectronApi {
   warmPreviewStream: (
     videoId: string
   ) => Promise<{ ready: boolean; streamUrl?: string; durationSec?: number; error?: string }>
+  prefetchPreviewStream: (videoId: string) => Promise<void>
 
   // Downloads
   getDownloadQueue: () => Promise<DownloadJob[]>

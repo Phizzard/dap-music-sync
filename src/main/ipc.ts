@@ -119,6 +119,9 @@ export function registerIpcHandlers(services: {
       return { ready: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
+  ipcMain.handle('stream:prefetch', (_e, videoId: string) =>
+    streamService.prefetchRemoteStream(videoId)
+  )
 
   // Downloads
   ipcMain.handle('downloads:getQueue', () => downloadQueue.getQueue())

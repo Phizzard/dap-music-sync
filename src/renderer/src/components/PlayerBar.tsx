@@ -80,6 +80,10 @@ export const PlayerBar: React.FC = () => {
         if (!cancelled) {
           setIsPlaying(true)
           setIsBuffering(false)
+          const nextItem = playbackQueue[queueIndex + 1]
+          if (nextItem?.source === 'remote' && nextItem.videoId) {
+            window.api.prefetchPreviewStream(nextItem.videoId).catch(() => {})
+          }
         }
       } catch (err: unknown) {
         if (!cancelled) {

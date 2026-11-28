@@ -20,7 +20,6 @@
     "electron-updater": "^6.8.11",
     "lucide-react": "^0.468.0",
     "music-metadata": "^10.6.0",
-    "youtubei.js": "^18.3.0",
     "ytmusic-api": "^5.2.3",
     "zustand": "^5.0.2"
   },
