@@ -211,7 +211,7 @@ export class StreamService {
       try {
         await fsp.mkdir(this.previewDir, { recursive: true })
         const { ytdlpPath, jsRuntimeArgs } = await this.binaryManager.getPaths()
-        const targetUrl = `https://www.youtube.com/watch?v=${cleanId}`
+        const targetUrl = `https://music.youtube.com/watch?v=${cleanId}`
         const outTemplate = path.join(this.previewDir, `${cleanId}.%(ext)s`)
         const t0 = Date.now()
 
@@ -220,8 +220,6 @@ export class StreamService {
           [
             '--no-playlist',
             ...jsRuntimeArgs,
-            '--extractor-args',
-            'youtube:player_client=android_vr,web',
             '-f',
             'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
             '--no-part',
@@ -283,10 +281,7 @@ export class StreamService {
     const t0 = Date.now()
     const { ytdlpPath, jsRuntimeArgs, cookieArgs } = await this.binaryManager.getPaths()
     const activeCookieArgs = useCookies ? cookieArgs : []
-    const extractorArgs = useCookies
-      ? []
-      : ['--extractor-args', 'youtube:player_client=android_vr,web']
-    const targetUrl = `https://www.youtube.com/watch?v=${cleanId}`
+    const targetUrl = `https://music.youtube.com/watch?v=${cleanId}`
 
     const result = await new Promise<'ok' | 'age_restricted'>((resolve, reject) => {
       const proc = spawn(
@@ -295,7 +290,6 @@ export class StreamService {
           '--no-playlist',
           ...jsRuntimeArgs,
           ...activeCookieArgs,
-          ...extractorArgs,
           '-f',
           'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
           '--no-warnings',
