@@ -1,7 +1,7 @@
 {
   "name": "dap-music-sync",
   "productName": "DAP Music Sync",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "DAP Music Sync — YouTube Music Downloader, Local Music Library & DAP Sync Desktop App",
   "main": "./out/main/index.js",
   "author": "Antigravity",
