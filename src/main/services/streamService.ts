@@ -220,11 +220,30 @@ export class StreamService {
   private async streamViaInnertube(cleanId: string, res: http.ServerResponse): Promise<void> {
     const t0 = Date.now()
     const yt = await this.ensureInnertube()
-    const webStream = await yt.download(cleanId, {
-      type: 'audio',
-      quality: 'best',
-      format: 'any'
-    })
+    const clients = ['ANDROID_VR', 'IOS', 'TV_EMBEDDED'] as const
+    let webStream: ReadableStream<Uint8Array> | null = null
+    let usedClient: string = clients[0]
+    let lastErr: unknown = null
+
+    for (const client of clients) {
+      try {
+        webStream = (await yt.download(cleanId, {
+          type: 'audio',
+          quality: 'best',
+          format: 'any',
+          client
+        })) as unknown as ReadableStream<Uint8Array>
+        usedClient = client
+        break
+      } catch (err) {
+        lastErr = err
+      }
+    }
+
+    if (!webStream) {
+      throw lastErr instanceof Error ? lastErr : new Error('No InnerTube client succeeded')
+    }
+
     const nodeStream = Readable.fromWeb(webStream as unknown as NodeReadableStream)
 
     await new Promise<void>((resolve, reject) => {
@@ -240,7 +259,7 @@ export class StreamService {
           headersSent = true
           const mimeType = sniffAudioMimeType(chunk)
           console.log(
-            `[stream] ${cleanId} innertube first chunk (${mimeType}) in ${Date.now() - t0}ms`
+            `[stream] ${cleanId} innertube (${usedClient}) first chunk (${mimeType}) in ${Date.now() - t0}ms`
           )
           res.writeHead(200, {
             'Access-Control-Allow-Origin': '*',
