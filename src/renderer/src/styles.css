@@ -67,6 +67,18 @@ body,
   user-select: none;
 }
 
+.app-shell.is-mac .sidebar {
+  padding-top: 44px;
+  -webkit-app-region: drag;
+}
+
+.app-shell.is-mac .sidebar button,
+.app-shell.is-mac .sidebar input,
+.app-shell.is-mac .sidebar a,
+.app-shell.is-mac .sidebar select {
+  -webkit-app-region: no-drag;
+}
+
 .brand {
   display: flex;
   align-items: center;

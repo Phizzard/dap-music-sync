@@ -82,8 +82,11 @@ export const App: React.FC = () => {
     { id: 'settings', label: 'Settings', icon: <Settings size={18} /> }
   ]
 
+  const isMac =
+    typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent)
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${isMac ? 'is-mac' : ''}`}>
       <div className="workspace-row">
         {/* Left Navigation Sidebar */}
         <aside className="sidebar">
