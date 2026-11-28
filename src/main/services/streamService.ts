@@ -6,7 +6,7 @@ import { AddressInfo } from 'net'
 import path from 'path'
 import { Readable } from 'stream'
 import type { ReadableStream as NodeReadableStream } from 'stream/web'
-import { Innertube, UniversalCache } from 'youtubei.js'
+import type { Innertube } from 'youtubei.js'
 import type { BinaryManager } from './binaryManager'
 import type { LibraryService } from './libraryService'
 
@@ -71,17 +71,17 @@ export class StreamService {
   private async ensureInnertube(): Promise<Innertube> {
     if (this.innertube) return this.innertube
     if (this.innertubeInitPromise) return this.innertubeInitPromise
-    this.innertubeInitPromise = Innertube.create({
-      cache: new UniversalCache(true)
+    this.innertubeInitPromise = (async () => {
+      const { Innertube: InnertubeClient, UniversalCache } = await import('youtubei.js')
+      const client = await InnertubeClient.create({
+        cache: new UniversalCache(true)
+      })
+      this.innertube = client
+      return client
+    })().catch((err) => {
+      this.innertubeInitPromise = null
+      throw err
     })
-      .then((client) => {
-        this.innertube = client
-        return client
-      })
-      .catch((err) => {
-        this.innertubeInitPromise = null
-        throw err
-      })
     return this.innertubeInitPromise
   }
 
