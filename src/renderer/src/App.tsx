@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import {
   Compass,
   Disc3,
@@ -29,9 +29,23 @@ export const App: React.FC = () => {
     initialize
   } = useAppStore()
 
+  const mainContentRef = useRef<HTMLElement | null>(null)
+  const scrollByTabRef = useRef<Partial<Record<NavTab, number>>>({})
+
   useEffect(() => {
     initialize()
   }, [])
+
+  useEffect(() => {
+    const el = mainContentRef.current
+    if (!el) return
+    const saved = scrollByTabRef.current[activeTab] ?? 0
+    requestAnimationFrame(() => {
+      if (mainContentRef.current) {
+        mainContentRef.current.scrollTop = saved
+      }
+    })
+  }, [activeTab])
 
   const activeDownloadsCount = downloadJobs.filter(
     (j) => j.stage === 'queued' || j.stage === 'downloading' || j.stage === 'processing'
@@ -110,7 +124,15 @@ export const App: React.FC = () => {
         </aside>
 
         {/* Main Content Viewport */}
-        <main className="main-content">
+        <main
+          ref={mainContentRef}
+          className="main-content"
+          onScroll={() => {
+            if (mainContentRef.current) {
+              scrollByTabRef.current[activeTab] = mainContentRef.current.scrollTop
+            }
+          }}
+        >
           {appUpdateStatus &&
             (appUpdateStatus.stage === 'available' ||
               appUpdateStatus.stage === 'downloading' ||
@@ -149,7 +171,9 @@ export const App: React.FC = () => {
               </div>
             )}
 
-          {activeTab === 'discover' && <DiscoverView />}
+          <div style={{ display: activeTab === 'discover' ? 'block' : 'none' }}>
+            <DiscoverView />
+          </div>
           {activeTab === 'library' && <LibraryView />}
           {activeTab === 'dap' && <DapSyncView />}
           {activeTab === 'downloads' && <QueueView />}
