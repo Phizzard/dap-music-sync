@@ -132,10 +132,10 @@ export class SearchService {
   }
 
   private async fallbackYtDlpSearch(query: string): Promise<SearchResults> {
-    const { ytdlpPath, jsRuntimeArgs } = await this.binaryManager.getPaths()
+    const { ytdlpPath, jsRuntimeArgs, cookieArgs } = await this.binaryManager.getPaths()
     const { stdout } = await execFileAsync(
       ytdlpPath,
-      [...jsRuntimeArgs, '--flat-playlist', '--dump-single-json', '--no-warnings', `ytsearch15:${query}`],
+      [...jsRuntimeArgs, ...cookieArgs, '--flat-playlist', '--dump-single-json', '--no-warnings', `ytsearch15:${query}`],
       { timeout: 30000, maxBuffer: 15 * 1024 * 1024, windowsHide: true }
     )
 

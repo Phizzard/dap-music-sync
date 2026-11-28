@@ -35,7 +35,8 @@ export class StoreService {
       defaultQuality: 'best',
       squareCoverArt: true,
       maxConcurrentDownloads: 2,
-      folderStructure: 'artist-album'
+      folderStructure: 'artist-album',
+      cookiesBrowser: 'none'
     }
 
     this.state = {

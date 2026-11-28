@@ -174,6 +174,7 @@ export class BinaryManager {
     ffmpegPath: string
     ffmpegDir: string
     jsRuntimeArgs: string[]
+    cookieArgs: string[]
   }> {
     const status = await this.getStatus()
     if (!status.ytdlp.found || !status.ytdlp.path) {
@@ -182,11 +183,17 @@ export class BinaryManager {
     if (!status.ffmpeg.found || !status.ffmpeg.path) {
       throw new Error('ffmpeg binary is not installed. Please install binaries in Settings.')
     }
+    const cookiesBrowser = this.store.getSettings().cookiesBrowser
+    const cookieArgs =
+      cookiesBrowser && cookiesBrowser !== 'none'
+        ? ['--cookies-from-browser', cookiesBrowser]
+        : []
     return {
       ytdlpPath: status.ytdlp.path,
       ffmpegPath: status.ffmpeg.path,
       ffmpegDir: path.dirname(status.ffmpeg.path),
-      jsRuntimeArgs: this.resolveNodeJsRuntimeArgs()
+      jsRuntimeArgs: this.resolveNodeJsRuntimeArgs(),
+      cookieArgs
     }
   }
 

@@ -174,7 +174,7 @@ export class DownloadQueueService {
 
     try {
       await fsp.mkdir(stagingDir, { recursive: true })
-      const { ytdlpPath, ffmpegDir, jsRuntimeArgs } = await this.binaryManager.getPaths()
+      const { ytdlpPath, ffmpegDir, jsRuntimeArgs, cookieArgs } = await this.binaryManager.getPaths()
       const settings = this.store.getSettings()
 
       const audioQualityArg =
@@ -186,6 +186,7 @@ export class DownloadQueueService {
       const args: string[] = [
         '--no-playlist',
         ...jsRuntimeArgs,
+        ...cookieArgs,
         '--ffmpeg-location',
         ffmpegDir,
         '-f',

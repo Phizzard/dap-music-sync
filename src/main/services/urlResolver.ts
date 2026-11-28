@@ -48,10 +48,10 @@ export class UrlResolverService {
     // If user pasted a watch?v=... URL (even if YT Music appended &list=RDAMVM...), resolve single track unless it's a /playlist page
     const resolveSingleTrack = Boolean(videoIdParam && !isExplicitPlaylistPage)
 
-    const { ytdlpPath, jsRuntimeArgs } = await this.binaryManager.getPaths()
+    const { ytdlpPath, jsRuntimeArgs, cookieArgs } = await this.binaryManager.getPaths()
     const args = resolveSingleTrack
-      ? [...jsRuntimeArgs, '--no-playlist', '--dump-single-json', '--no-warnings', trimmed]
-      : [...jsRuntimeArgs, '--flat-playlist', '--dump-single-json', '--no-warnings', trimmed]
+      ? [...jsRuntimeArgs, ...cookieArgs, '--no-playlist', '--dump-single-json', '--no-warnings', trimmed]
+      : [...jsRuntimeArgs, ...cookieArgs, '--flat-playlist', '--dump-single-json', '--no-warnings', trimmed]
 
     const { stdout } = await execFileAsync(ytdlpPath, args, {
       timeout: 45000,

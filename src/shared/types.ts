@@ -2,6 +2,7 @@ export type AudioFormat = 'flac' | 'mp3' | 'm4a' | 'opus'
 export type AudioQuality = 'best' | '320k' | '256k' | '192k'
 export type FolderStructure = 'artist-album' | 'artist' | 'flat'
 export type SearchFilter = 'all' | 'songs' | 'albums' | 'playlists'
+export type CookiesBrowser = 'none' | 'chrome' | 'safari' | 'firefox' | 'edge' | 'brave' | 'opera' | 'vivaldi'
 
 export interface RemoteTrack {
   videoId: string
@@ -241,6 +242,7 @@ export interface AppSettings {
   squareCoverArt: boolean
   maxConcurrentDownloads: number
   folderStructure: FolderStructure
+  cookiesBrowser?: CookiesBrowser
   customYtdlpPath?: string
   customFfmpegPath?: string
 }

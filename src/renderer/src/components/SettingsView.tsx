@@ -7,7 +7,7 @@ import {
   RefreshCw,
   XCircle
 } from 'lucide-react'
-import type { AudioFormat, AudioQuality, FolderStructure } from '@shared/types'
+import type { AudioFormat, AudioQuality, CookiesBrowser, FolderStructure } from '@shared/types'
 import { useAppStore } from '../state/useAppStore'
 
 export const SettingsView: React.FC = () => {
@@ -159,6 +159,26 @@ export const SettingsView: React.FC = () => {
               <option value={2}>2 simultaneous</option>
               <option value={3}>3 simultaneous</option>
               <option value={4}>4 simultaneous</option>
+            </select>
+          </div>
+
+          <div className="field-block">
+            <label>YouTube Cookies (Age-Restricted Tracks)</label>
+            <select
+              className="full-select"
+              value={settings.cookiesBrowser || 'none'}
+              onChange={(e) =>
+                updateSettings({ cookiesBrowser: e.target.value as CookiesBrowser })
+              }
+            >
+              <option value="none">None (Default)</option>
+              <option value="chrome">Google Chrome</option>
+              <option value="safari">Safari</option>
+              <option value="firefox">Firefox</option>
+              <option value="brave">Brave</option>
+              <option value="edge">Microsoft Edge</option>
+              <option value="opera">Opera</option>
+              <option value="vivaldi">Vivaldi</option>
             </select>
           </div>
         </div>

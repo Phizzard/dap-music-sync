@@ -173,22 +173,34 @@ export class StreamService {
 
     const promise = (async (): Promise<ResolvedPreviewStream> => {
       const t0 = Date.now()
-      const { ytdlpPath, jsRuntimeArgs } = await this.binaryManager.getPaths()
+      const { ytdlpPath, jsRuntimeArgs, cookieArgs } = await this.binaryManager.getPaths()
       const targetUrl = `https://music.youtube.com/watch?v=${cleanId}`
 
-      const { stdout } = await execFileAsync(
-        ytdlpPath,
-        [
-          '--no-playlist',
-          ...jsRuntimeArgs,
-          '-f',
-          'bestaudio[ext=webm][protocol^=http]/bestaudio[ext=m4a][protocol^=http]/bestaudio[protocol^=http]/bestaudio',
-          '--dump-single-json',
-          '--no-warnings',
-          targetUrl
-        ],
-        { timeout: 30000, maxBuffer: 10 * 1024 * 1024, windowsHide: true }
-      )
+      let stdout: string
+      try {
+        ;({ stdout } = await execFileAsync(
+          ytdlpPath,
+          [
+            '--no-playlist',
+            ...jsRuntimeArgs,
+            ...cookieArgs,
+            '-f',
+            'bestaudio[ext=webm][protocol^=http]/bestaudio[ext=m4a][protocol^=http]/bestaudio[protocol^=http]/bestaudio',
+            '--dump-single-json',
+            '--no-warnings',
+            targetUrl
+          ],
+          { timeout: 30000, maxBuffer: 10 * 1024 * 1024, windowsHide: true }
+        ))
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (/sign in to confirm your age/i.test(msg)) {
+          throw new Error(
+            'This track is age-restricted on YouTube. Select a signed-in browser under Settings → YouTube Cookies to play or download it.'
+          )
+        }
+        throw err
+      }
       console.log(`[stream] resolved ${cleanId} via yt-dlp in ${Date.now() - t0}ms`)
 
       const data = JSON.parse(stdout) as Record<string, unknown>
@@ -320,7 +332,7 @@ export class StreamService {
       return
     }
 
-    const { ytdlpPath, jsRuntimeArgs } = await this.binaryManager.getPaths()
+    const { ytdlpPath, jsRuntimeArgs, cookieArgs } = await this.binaryManager.getPaths()
     const targetUrl = `https://music.youtube.com/watch?v=${cleanId}`
 
     await new Promise<void>((resolve, reject) => {
@@ -329,6 +341,7 @@ export class StreamService {
         [
           '--no-playlist',
           ...jsRuntimeArgs,
+          ...cookieArgs,
           '-f',
           'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
           '--no-warnings',
