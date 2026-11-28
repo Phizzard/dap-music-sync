@@ -4,6 +4,9 @@ import fsp from 'fs/promises'
 import http from 'http'
 import { AddressInfo } from 'net'
 import path from 'path'
+import { Readable } from 'stream'
+import type { ReadableStream as NodeReadableStream } from 'stream/web'
+import { Innertube, UniversalCache } from 'youtubei.js'
 import type { BinaryManager } from './binaryManager'
 import type { LibraryService } from './libraryService'
 
@@ -57,11 +60,30 @@ function sniffAudioMimeType(chunk: Buffer): string {
 export class StreamService {
   private server: http.Server | null = null
   private baseUrl = ''
+  private innertube: Innertube | null = null
+  private innertubeInitPromise: Promise<Innertube> | null = null
 
   constructor(
     private binaryManager: BinaryManager,
     private libraryService: LibraryService
   ) {}
+
+  private async ensureInnertube(): Promise<Innertube> {
+    if (this.innertube) return this.innertube
+    if (this.innertubeInitPromise) return this.innertubeInitPromise
+    this.innertubeInitPromise = Innertube.create({
+      cache: new UniversalCache(true)
+    })
+      .then((client) => {
+        this.innertube = client
+        return client
+      })
+      .catch((err) => {
+        this.innertubeInitPromise = null
+        throw err
+      })
+    return this.innertubeInitPromise
+  }
 
   public async start(): Promise<string> {
     if (this.server && this.baseUrl) return this.baseUrl
@@ -87,6 +109,9 @@ export class StreamService {
         resolve()
       })
     })
+
+    // Warm up InnerTube client in the background so first preview is fast
+    this.ensureInnertube().catch(() => {})
 
     return this.baseUrl
   }
@@ -127,7 +152,7 @@ export class StreamService {
         await this.serveAudioFile(preview.filePath, req, res)
         return
       }
-      await this.streamViaYtdlp(preview.videoId, req, res)
+      await this.streamRemoteAudio(preview.videoId, req, res)
       return
     }
     if (kind === 'local' && id) {
@@ -159,13 +184,103 @@ export class StreamService {
       }
     }
 
-    // Ensure binaries are available before PlayerBar starts playback
-    await this.binaryManager.getPaths()
-
     return {
       kind: 'stream',
       videoId: cleanId
     }
+  }
+
+  private async streamRemoteAudio(
+    cleanId: string,
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ): Promise<void> {
+    if (req.method === 'HEAD') {
+      res.writeHead(200, {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'audio/webm'
+      })
+      res.end()
+      return
+    }
+
+    try {
+      await this.streamViaInnertube(cleanId, res)
+      return
+    } catch (err) {
+      if (res.headersSent || res.writableEnded || res.destroyed) return
+      console.warn(
+        `[stream] ${cleanId} innertube failed (${err instanceof Error ? err.message : String(err)}), falling back to yt-dlp`
+      )
+    }
+
+    await this.streamViaYtdlp(cleanId, req, res)
+  }
+
+  private async streamViaInnertube(cleanId: string, res: http.ServerResponse): Promise<void> {
+    const t0 = Date.now()
+    const yt = await this.ensureInnertube()
+    const webStream = await yt.download(cleanId, {
+      type: 'audio',
+      quality: 'best',
+      format: 'any'
+    })
+    const nodeStream = Readable.fromWeb(webStream as unknown as NodeReadableStream)
+
+    await new Promise<void>((resolve, reject) => {
+      let headersSent = false
+
+      const onData = (chunk: Buffer): void => {
+        if (res.destroyed || res.writableEnded) {
+          nodeStream.destroy()
+          resolve()
+          return
+        }
+        if (!headersSent) {
+          headersSent = true
+          const mimeType = sniffAudioMimeType(chunk)
+          console.log(
+            `[stream] ${cleanId} innertube first chunk (${mimeType}) in ${Date.now() - t0}ms`
+          )
+          res.writeHead(200, {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': mimeType
+          })
+          res.write(chunk)
+          nodeStream.removeListener('data', onData)
+          nodeStream.pipe(res)
+        }
+      }
+
+      nodeStream.on('data', onData)
+
+      nodeStream.on('end', () => {
+        if (!headersSent && !res.headersSent) {
+          reject(new Error('Empty audio stream from InnerTube'))
+          return
+        }
+        if (!res.writableEnded) {
+          res.end()
+        }
+        resolve()
+      })
+
+      nodeStream.on('error', (err) => {
+        if (!headersSent && !res.headersSent) {
+          reject(err)
+        } else {
+          res.destroy(err)
+          resolve()
+        }
+      })
+
+      res.on('close', () => {
+        if (!res.writableEnded && !nodeStream.destroyed) {
+          nodeStream.destroy()
+        }
+        resolve()
+      })
+    })
   }
 
   private async streamViaYtdlp(
@@ -219,7 +334,7 @@ export class StreamService {
         headersSent = true
         const mimeType = sniffAudioMimeType(firstChunk)
         console.log(
-          `[stream] ${cleanId} first audio chunk (${mimeType}) in ${Date.now() - t0}ms`
+          `[stream] ${cleanId} yt-dlp first audio chunk (${mimeType}) in ${Date.now() - t0}ms`
         )
         res.writeHead(200, {
           'Access-Control-Allow-Origin': '*',
