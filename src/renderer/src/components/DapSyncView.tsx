@@ -15,7 +15,7 @@ import type { DapProfile, FolderStructure, SyncPlan } from '@shared/types'
 import { useAppStore } from '../state/useAppStore'
 import { formatBytes } from '../utils/format'
 
-type SelectorTab = 'playlists' | 'albums' | 'songs'
+type SelectorTab = 'playlists' | 'albums' | 'artists' | 'songs'
 
 export const DapSyncView: React.FC = () => {
   const {
@@ -69,6 +69,37 @@ export const DapSyncView: React.FC = () => {
     return [...map.values()].sort((a, b) => a.artist.localeCompare(b.artist) || a.album.localeCompare(b.album))
   }, [tracks])
 
+  const artists = useMemo(() => {
+    const map = new Map<
+      string,
+      { artist: string; albums: Set<string>; count: number; bytes: number }
+    >()
+    for (const t of tracks) {
+      if (t.missingOnDisk) continue
+      const existing = map.get(t.artist)
+      if (existing) {
+        existing.albums.add(t.album)
+        existing.count++
+        existing.bytes += t.fileSize
+      } else {
+        map.set(t.artist, {
+          artist: t.artist,
+          albums: new Set([t.album]),
+          count: 1,
+          bytes: t.fileSize
+        })
+      }
+    }
+    return [...map.values()]
+      .map((a) => ({
+        artist: a.artist,
+        albumCount: a.albums.size,
+        count: a.count,
+        bytes: a.bytes
+      }))
+      .sort((a, b) => a.artist.localeCompare(b.artist))
+  }, [tracks])
+
   const reloadPlan = async (profileId: string): Promise<void> => {
     setLoadingPlan(true)
     try {
@@ -96,6 +127,7 @@ export const DapSyncView: React.FC = () => {
     activeProfile?.mirrorDeletions,
     activeProfile?.selectedTrackIds.length,
     activeProfile?.selectedAlbums.length,
+    activeProfile?.selectedArtists?.length,
     activeProfile?.selectedPlaylistIds.length,
     tracks.length,
     playlists.length,
@@ -110,6 +142,7 @@ export const DapSyncView: React.FC = () => {
       syncMode: 'all',
       selectedTrackIds: [],
       selectedAlbums: [],
+      selectedArtists: [],
       selectedPlaylistIds: [],
       folderTemplate: 'artist-album',
       exportM3u8: true,
@@ -380,6 +413,12 @@ export const DapSyncView: React.FC = () => {
                         Albums ({activeProfile.selectedAlbums.length}/{albums.length})
                       </button>
                       <button
+                        className={`pill ${selectorTab === 'artists' ? 'active' : ''}`}
+                        onClick={() => setSelectorTab('artists')}
+                      >
+                        Artists ({(activeProfile.selectedArtists || []).length}/{artists.length})
+                      </button>
+                      <button
                         className={`pill ${selectorTab === 'playlists' ? 'active' : ''}`}
                         onClick={() => setSelectorTab('playlists')}
                       >
@@ -435,6 +474,37 @@ export const DapSyncView: React.FC = () => {
                                 </span>
                                 <span className="selector-meta">
                                   {alb.count} tracks · {formatBytes(alb.bytes)}
+                                </span>
+                              </label>
+                            )
+                          })
+                      ))}
+
+                    {selectorTab === 'artists' &&
+                      (artists.length === 0 ? (
+                        <p className="subtext">No artists in your Library yet.</p>
+                      ) : (
+                        artists
+                          .filter((a) => !q || a.artist.toLowerCase().includes(q))
+                          .map((art) => {
+                            const selectedArtists = activeProfile.selectedArtists || []
+                            const checked = selectedArtists.includes(art.artist)
+                            return (
+                              <label key={art.artist} className="selector-row">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    const next = e.target.checked
+                                      ? [...selectedArtists, art.artist]
+                                      : selectedArtists.filter((name) => name !== art.artist)
+                                    updateActiveProfile({ selectedArtists: next })
+                                  }}
+                                />
+                                <span className="selector-primary">{art.artist}</span>
+                                <span className="selector-meta">
+                                  {art.albumCount} {art.albumCount === 1 ? 'album' : 'albums'} ·{' '}
+                                  {art.count} tracks · {formatBytes(art.bytes)}
                                 </span>
                               </label>
                             )

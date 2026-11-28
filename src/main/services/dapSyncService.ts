@@ -69,7 +69,8 @@ export class DapSyncService {
       ...input,
       id: input.id || crypto.randomUUID(),
       name: input.name.trim() || 'My DAP',
-      targetPath: input.targetPath.trim()
+      targetPath: input.targetPath.trim(),
+      selectedArtists: input.selectedArtists || []
     }
 
     const idx = profiles.findIndex((p) => p.id === profile.id)
@@ -104,6 +105,7 @@ export class DapSyncService {
 
     const trackIdSet = new Set(profile.selectedTrackIds)
     const albumKeySet = new Set(profile.selectedAlbums)
+    const artistSet = new Set(profile.selectedArtists || [])
     const selectedPlaylists = allPlaylists.filter((p) =>
       profile.selectedPlaylistIds.includes(p.id)
     )
@@ -115,6 +117,7 @@ export class DapSyncService {
 
     const chosen = validTracks.filter((t) => {
       if (trackIdSet.has(t.id)) return true
+      if (artistSet.has(t.artist)) return true
       const albumKey = `${t.artist}|||${t.album}`
       if (albumKeySet.has(albumKey)) return true
       return false

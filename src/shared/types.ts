@@ -132,6 +132,7 @@ export interface DapProfile {
   syncMode: DapSyncMode
   selectedTrackIds: string[]
   selectedAlbums: string[] // key: `${artist}|||${album}`
+  selectedArtists?: string[]
   selectedPlaylistIds: string[]
   folderTemplate: FolderStructure
   exportM3u8: boolean
