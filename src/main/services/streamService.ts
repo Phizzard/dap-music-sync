@@ -172,6 +172,7 @@ export class StreamService {
     if (inflight) return inflight
 
     const promise = (async (): Promise<ResolvedPreviewStream> => {
+      const t0 = Date.now()
       const { ytdlpPath, jsRuntimeArgs } = await this.binaryManager.getPaths()
       const targetUrl = `https://music.youtube.com/watch?v=${cleanId}`
 
@@ -188,6 +189,7 @@ export class StreamService {
         ],
         { timeout: 30000, maxBuffer: 10 * 1024 * 1024, windowsHide: true }
       )
+      console.log(`[stream] resolved ${cleanId} via yt-dlp in ${Date.now() - t0}ms`)
 
       const data = JSON.parse(stdout) as Record<string, unknown>
       const requestedFormats = Array.isArray(data.requested_formats)
@@ -271,12 +273,15 @@ export class StreamService {
     const cleanId = videoId.replace(/[^A-Za-z0-9_-]/g, '')
 
     if (!stream.isDirectHttp) {
+      console.log(`[stream] ${cleanId} non-direct protocol, using yt-dlp stdout stream`)
       await this.streamViaYtdlp(cleanId, stream.mimeType, req, res)
       return
     }
 
     try {
+      const t0 = Date.now()
       const status = await this.forwardUpstreamRequest(stream, req, res)
+      console.log(`[stream] ${cleanId} direct proxy HTTP ${status} in ${Date.now() - t0}ms`)
       if (status === 403 || status === 410) {
         if (allowRetry) {
           this.remoteCache.delete(cleanId)
@@ -289,10 +294,11 @@ export class StreamService {
           return
         }
         // Direct URL still rejected after refresh; fall back to yt-dlp streaming
+        console.log(`[stream] ${cleanId} direct proxy rejected (${status}), falling back to yt-dlp`)
         await this.streamViaYtdlp(cleanId, stream.mimeType, req, res)
       }
     } catch (err) {
-      console.warn('Direct stream proxy failed, falling back to yt-dlp stream:', err)
+      console.warn(`[stream] ${cleanId} direct proxy failed, falling back to yt-dlp:`, err)
       if (!res.headersSent && !res.writableEnded) {
         await this.streamViaYtdlp(cleanId, stream.mimeType, req, res)
       }
@@ -415,7 +421,7 @@ export class StreamService {
           method: req.method === 'HEAD' ? 'HEAD' : 'GET',
           headers,
           family,
-          timeout: 10000
+          timeout: 4000
         },
         (upstreamRes) => {
           const statusCode = upstreamRes.statusCode || 502
