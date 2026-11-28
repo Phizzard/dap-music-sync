@@ -1,4 +1,4 @@
-import { execFile } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import fs from 'fs'
 import fsp from 'fs/promises'
 import http from 'http'
@@ -16,6 +16,7 @@ interface CachedRemoteStream {
   streamUrl: string
   mimeType: string
   headers: Record<string, string>
+  isDirectHttp: boolean
   durationSec?: number
   expiresAt: number
 }
@@ -203,6 +204,17 @@ export class StreamService {
         throw new Error('Could not resolve direct audio stream URL.')
       }
 
+      const protocol =
+        typeof data.protocol === 'string'
+          ? data.protocol
+          : typeof requestedFormats[0]?.protocol === 'string'
+            ? requestedFormats[0].protocol
+            : 'https'
+      const isDirectHttp =
+        protocol.startsWith('http') &&
+        !protocol.includes('m3u8') &&
+        !directUrl.includes('.m3u8')
+
       const extRaw =
         typeof data.ext === 'string' && data.ext
           ? data.ext
@@ -233,6 +245,7 @@ export class StreamService {
         streamUrl: directUrl,
         mimeType,
         headers,
+        isDirectHttp,
         durationSec,
         expiresAt: this.parseStreamExpiration(directUrl)
       }
@@ -255,17 +268,122 @@ export class StreamService {
     res: http.ServerResponse,
     allowRetry = true
   ): Promise<void> {
-    const status = await this.forwardUpstreamRequest(stream, req, res)
-    if ((status === 403 || status === 410) && allowRetry) {
-      const cleanId = videoId.replace(/[^A-Za-z0-9_-]/g, '')
-      this.remoteCache.delete(cleanId)
-      const refreshed = await this.resolveRemoteStream(cleanId)
-      if (refreshed.kind === 'file') {
-        await this.serveAudioFile(refreshed.filePath, req, res)
-        return
-      }
-      await this.proxyRemoteStream(videoId, refreshed, req, res, false)
+    const cleanId = videoId.replace(/[^A-Za-z0-9_-]/g, '')
+
+    if (!stream.isDirectHttp) {
+      await this.streamViaYtdlp(cleanId, stream.mimeType, req, res)
+      return
     }
+
+    try {
+      const status = await this.forwardUpstreamRequest(stream, req, res)
+      if (status === 403 || status === 410) {
+        if (allowRetry) {
+          this.remoteCache.delete(cleanId)
+          const refreshed = await this.resolveRemoteStream(cleanId)
+          if (refreshed.kind === 'file') {
+            await this.serveAudioFile(refreshed.filePath, req, res)
+            return
+          }
+          await this.proxyRemoteStream(cleanId, refreshed, req, res, false)
+          return
+        }
+        // Direct URL still rejected after refresh; fall back to yt-dlp streaming
+        await this.streamViaYtdlp(cleanId, stream.mimeType, req, res)
+      }
+    } catch (err) {
+      console.warn('Direct stream proxy failed, falling back to yt-dlp stream:', err)
+      if (!res.headersSent && !res.writableEnded) {
+        await this.streamViaYtdlp(cleanId, stream.mimeType, req, res)
+      }
+    }
+  }
+
+  private async streamViaYtdlp(
+    cleanId: string,
+    mimeType: string,
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ): Promise<void> {
+    if (req.method === 'HEAD') {
+      res.writeHead(200, {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': mimeType
+      })
+      res.end()
+      return
+    }
+
+    const { ytdlpPath, jsRuntimeArgs } = await this.binaryManager.getPaths()
+    const targetUrl = `https://music.youtube.com/watch?v=${cleanId}`
+
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn(
+        ytdlpPath,
+        [
+          '--no-playlist',
+          ...jsRuntimeArgs,
+          '-f',
+          'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio',
+          '--no-warnings',
+          '-o',
+          '-',
+          targetUrl
+        ],
+        { windowsHide: true }
+      )
+
+      let headersSent = false
+      let stderrText = ''
+
+      proc.stderr.on('data', (chunk: Buffer) => {
+        stderrText += chunk.toString()
+      })
+
+      proc.stdout.once('data', (firstChunk: Buffer) => {
+        if (res.destroyed || res.writableEnded) {
+          proc.kill()
+          resolve()
+          return
+        }
+        headersSent = true
+        res.writeHead(200, {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': mimeType
+        })
+        res.write(firstChunk)
+        proc.stdout.pipe(res)
+      })
+
+      proc.stdout.on('end', () => {
+        if (!res.writableEnded) {
+          res.end()
+        }
+        resolve()
+      })
+
+      proc.on('error', (err) => {
+        if (!headersSent && !res.headersSent) reject(err)
+        else {
+          res.destroy(err)
+          resolve()
+        }
+      })
+
+      proc.on('close', (code) => {
+        if (!headersSent && !res.headersSent) {
+          reject(new Error(stderrText.trim() || `yt-dlp stream exited with code ${code}`))
+        } else {
+          resolve()
+        }
+      })
+
+      res.on('close', () => {
+        if (!res.writableEnded && !proc.killed) {
+          proc.kill()
+        }
+      })
+    })
   }
 
   private forwardUpstreamRequest(
@@ -284,11 +402,20 @@ export class StreamService {
         headers['Range'] = req.headers.range
       }
 
+      const ipParam = parsedUrl.searchParams.get('ip') || ''
+      const family = /^\d+\.\d+\.\d+\.\d+$/.test(ipParam)
+        ? 4
+        : ipParam.includes(':')
+          ? 6
+          : undefined
+
       const upstreamReq = client.request(
         parsedUrl,
         {
           method: req.method === 'HEAD' ? 'HEAD' : 'GET',
-          headers
+          headers,
+          family,
+          timeout: 10000
         },
         (upstreamRes) => {
           const statusCode = upstreamRes.statusCode || 502
@@ -344,6 +471,10 @@ export class StreamService {
           })
         }
       )
+
+      upstreamReq.on('timeout', () => {
+        upstreamReq.destroy(new Error('Upstream stream timed out'))
+      })
 
       res.on('close', () => {
         if (!res.writableEnded) {
